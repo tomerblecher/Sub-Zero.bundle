@@ -7,6 +7,7 @@ import sys
 import rarfile
 import jstyleson
 import datetime
+import time
 
 import subliminal
 import subliminal_patch
@@ -22,7 +23,7 @@ from subliminal.cli import MutexLock
 from subzero.lib.io import FileIO, get_viable_encoding
 from subzero.lib.dict import Dicked
 from subzero.util import get_root_path
-from subzero.constants import PLUGIN_NAME, PLUGIN_IDENTIFIER, MOVIE, SHOW, MEDIA_TYPE_TO_STRING
+from subzero.constants import PLUGIN_NAME, PLUGIN_IDENTIFIER, MOVIE, SHOW, MEDIA_TYPE_TO_STRING, START_DELAY
 from subzero.prefs import get_user_prefs, update_user_prefs
 from dogpile.cache.region import register_backend as register_cache_backend
 from lib import Plex
@@ -148,10 +149,15 @@ class Config(object):
     unrar = None
     adv_cfg_path = None
     use_custom_dns = False
+    delay_system_queries = False
 
     store_recently_played_amount = 40
 
     initialized = False
+    system_queries_done = False
+    base_init_done = False
+    system_queries_timer = None
+    start_delay_elapsed = None
 
     def initialize(self):
         self.libraries_root = os.path.abspath(os.path.join(get_root_path(), ".."))
@@ -169,6 +175,7 @@ class Config(object):
         self.set_log_paths()
         self.app_support_path = Core.app_support_path
         self.data_path = getattr(Data, "_core").storage.data_path
+        self.delay_system_queries = os.path.isfile(os.path.join(self.data_path, "delayed_start"))
         self.data_items_path = os.path.join(self.data_path, "DataItems")
         self.universal_plex_token = self.get_universal_plex_token()
         self.plex_token = os.environ.get("PLEXTOKEN", self.universal_plex_token)
@@ -205,8 +212,25 @@ class Config(object):
         self.missing_permissions = []
         self.include_exclude_sz_files = cast_bool(Prefs["subtitles.include_exclude_fs"])
         self.include_exclude_paths = self.parse_include_exclude_paths()
-        self.enabled_sections = self.check_enabled_sections()
-        self.permissions_ok = self.check_permissions()
+
+        self.system_queries_done = False
+
+        def system_queries():
+            self.enabled_sections = self.check_enabled_sections()
+            self.permissions_ok = self.check_permissions()
+            self.system_queries_done = True
+            self.system_queries_timer = None
+            if self.base_init_done:
+                self.initialized = True
+
+        if self.delay_system_queries:
+            if not self.system_queries_timer or not self.system_queries_timer.is_alive():
+                Log.Info("Waiting %s seconds until querying the system endpoints of your PMS" % START_DELAY)
+                Thread.CreateTimer(START_DELAY, system_queries)
+                self.start_delay_elapsed = time.time()
+        else:
+            system_queries()
+
         self.notify_executable = self.check_notify_executable()
         self.remove_hi = cast_bool(Prefs['subtitles.remove_hi'])
         self.remove_tags = cast_bool(Prefs['subtitles.remove_tags'])
@@ -228,7 +252,11 @@ class Config(object):
         self.embedded_auto_extract = cast_bool(Prefs["subtitles.embedded.autoextract"])
         self.ietf_as_alpha3 = cast_bool(Prefs["subtitles.language.ietf_normalize"])
         self.use_custom_dns = cast_bool(Prefs['use_custom_dns'])
-        self.initialized = True
+
+        self.base_init_done = True
+
+        if self.system_queries_done:
+            self.initialized = True
 
     def migrate_prefs(self):
         config_version = 0 if "config_version" not in Dict else Dict["config_version"]

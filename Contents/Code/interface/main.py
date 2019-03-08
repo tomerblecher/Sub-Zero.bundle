@@ -1,6 +1,8 @@
 # coding=utf-8
 
-from subzero.constants import PREFIX, TITLE, ART
+import time
+
+from subzero.constants import PREFIX, TITLE, ART, START_DELAY
 from support.config import config
 from support.helpers import pad_title, timestamp, df, display_language
 from support.scheduler import scheduler
@@ -27,45 +29,56 @@ def fatality(randomize=None, force_title=None, header=None, message=None, only_r
                          no_history=no_history,
                          replace_parent=replace_parent, no_cache=True)
 
-    # always re-check permissions
-    config.refresh_permissions_status()
+    if config.initialized:
+        # always re-check permissions
+        config.refresh_permissions_status()
 
-    # always re-check enabled sections
-    config.refresh_enabled_sections()
+        # always re-check enabled sections
+        config.refresh_enabled_sections()
 
-    if config.lock_menu and not config.pin_correct:
-        oc.add(DirectoryObject(
-            key=Callback(PinMenu, randomize=timestamp()),
-            title=pad_title(_("Enter PIN")),
-            summary=_("The owner has restricted the access to this menu. Please enter the correct pin"),
-        ))
-        return oc
-
-    if not config.permissions_ok and config.missing_permissions:
-        if not isinstance(config.missing_permissions, list):
+        if config.lock_menu and not config.pin_correct:
             oc.add(DirectoryObject(
-                key=Callback(fatality, randomize=timestamp()),
-                title=pad_title(_("Insufficient permissions")),
-                summary=config.missing_permissions,
+                key=Callback(PinMenu, randomize=timestamp()),
+                title=pad_title(_("Enter PIN")),
+                summary=_("The owner has restricted the access to this menu. Please enter the correct pin"),
             ))
-        else:
-            for title, path in config.missing_permissions:
+            return oc
+
+        if not config.permissions_ok and config.missing_permissions:
+            if not isinstance(config.missing_permissions, list):
                 oc.add(DirectoryObject(
                     key=Callback(fatality, randomize=timestamp()),
                     title=pad_title(_("Insufficient permissions")),
-                    summary=_("Insufficient permissions on library %(title)s, folder: %(path)s",
-                              title=title,
-                              path=path),
+                    summary=config.missing_permissions,
                 ))
-        return oc
+            else:
+                for title, path in config.missing_permissions:
+                    oc.add(DirectoryObject(
+                        key=Callback(fatality, randomize=timestamp()),
+                        title=pad_title(_("Insufficient permissions")),
+                        summary=_("Insufficient permissions on library %(title)s, folder: %(path)s",
+                                  title=title,
+                                  path=path),
+                    ))
+            return oc
 
-    if not config.enabled_sections:
-        oc.add(DirectoryObject(
-            key=Callback(fatality, randomize=timestamp()),
-            title=pad_title(_("I'm not enabled!")),
-            summary=_("Please enable me for some of your libraries in your server settings; currently I do nothing"),
-        ))
-        return oc
+        if not config.enabled_sections:
+            oc.add(DirectoryObject(
+                key=Callback(fatality, randomize=timestamp()),
+                title=pad_title(_("I'm not enabled!")),
+                summary=_("Please enable me for some of your libraries in your server settings; currently I do nothing"),
+            ))
+            return oc
+    else:
+        if config.delay_system_queries:
+            elapsed = int(START_DELAY - (time.time() - config.start_delay_elapsed))
+            oc.add(DirectoryObject(
+                key=Callback(fatality, randomize=timestamp()),
+                title=pad_title(_("Finalizing ..."
+                                  if elapsed <= 0 else "Initializing, please wait %s seconds ..." % elapsed)),
+                summary=_("Start is delayed by %s seconds to cope with a slow PMS" % int(START_DELAY)),
+            ))
+            return oc
 
     if not only_refresh:
         if Dict["current_refresh_state"]:

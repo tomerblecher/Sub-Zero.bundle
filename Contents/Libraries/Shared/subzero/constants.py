@@ -15,6 +15,7 @@ ICON     = 'icon-default.jpg'
 ICON_SUB = 'icon-sub.jpg'
 
 DEFAULT_TIMEOUT = 15
+START_DELAY = 30.0
 
 
 # media types as on https://github.com/Arcanemagus/plex-api/wiki/MediaTypes

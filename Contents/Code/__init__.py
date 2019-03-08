@@ -70,7 +70,7 @@ def Start():
     ValidatePrefs()
     Log.Debug(config.full_version)
 
-    if not config.permissions_ok:
+    if config.initialized and not config.permissions_ok:
         Log.Error("Insufficient permissions on library folders:")
         for title, path in config.missing_permissions:
             Log.Error("Insufficient permissions on library %s, folder: %s" % (title, path))
