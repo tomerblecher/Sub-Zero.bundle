@@ -329,6 +329,9 @@ def notify_executable(exe_info, videos, subtitles, storage):
                                         stderr=subprocess.PIPE, shell=True, env=env, cwd=os.path.dirname(exe))
                 output, errors = proc.communicate()
 
+                Log.Info("Executable: %s, Env: %s, Exe_info: %s, Output: %s, Errors: %s"
+                         % (quote_args([exe] + prepared_arguments), env, exe_info, output, errors))
+
                 if proc.returncode == 1:
                     Log.Error(u"Calling %s with args %s failed: output:\n%s, error:\n%s", exe, prepared_arguments,
                              output, errors)
