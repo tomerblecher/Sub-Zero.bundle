@@ -1,7 +1,8 @@
 # coding=utf-8
 import re
 
-from subzero.modification.mods import SubtitleTextModification, empty_line_post_processors, EmptyEntryError, TAG
+from subzero.modification.mods import SubtitleTextModification, empty_line_post_processors, EmptyEntryError, TAG, \
+    FullContentRep
 from subzero.modification.processors.re_processor import NReProcessor
 from subzero.modification import registry
 
@@ -10,9 +11,11 @@ class FullBracketEntryProcessor(NReProcessor):
     def process(self, content, debug=False, **kwargs):
         entry = kwargs.get("entry")
         if entry:
-            rep_content = super(FullBracketEntryProcessor, self).process(entry, debug=debug, **kwargs)
-            if not rep_content.strip():
-                raise EmptyEntryError()
+            rep_content = super(FullBracketEntryProcessor, self).process(entry, debug=debug, **kwargs).strip()
+            if not rep_content:
+                raise EmptyEntryError(mod=self.mod, entry=entry)
+            if content != rep_content:
+                raise FullContentRep(new_content=rep_content, mod=self.mod, entry=entry)
         return content
 
 
@@ -49,8 +52,8 @@ class HearingImpaired(SubtitleTextModification):
         NReProcessor(re.compile(ur'(?sux)-?%(t)s[([][^([)\]]+?(?=[A-zÀ-ž"\'.]{3,})[^([)\]]+[)\]][\s:]*%(t)s' %
                                 {"t": TAG}), "", name="HI_brackets"),
 
-        #NReProcessor(re.compile(ur'(?sux)-?%(t)s[([]%(t)s(?=[A-zÀ-ž"\'.]{3,})[^([)\]]+%(t)s$' % {"t": TAG}),
-        #             "", name="HI_bracket_open_start"),
+        FullBracketEntryProcessor(re.compile(ur'(?sux)-?%(t)s[([]%(t)s(?=[A-zÀ-ž"\'.]{3,})[^([)\]]+%(t)s$' % {"t": TAG}),
+                     "", name="HI_bracket_open_start"),
 
         #NReProcessor(re.compile(ur'(?sux)-?%(t)s(?=[A-zÀ-ž"\'.]{3,})[^([)\]]+[)\]][\s:]*%(t)s' % {"t": TAG}), "",
         #             name="HI_bracket_open_end"),

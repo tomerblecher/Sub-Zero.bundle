@@ -7,12 +7,14 @@ class Processor(object):
     """
     name = None
     parent = None
+    mod = None
     supported = None
     enabled = True
 
-    def __init__(self, name=None, parent=None, supported=None):
+    def __init__(self, name=None, parent=None, mod=None, supported=None):
         self.name = name
         self.parent = parent
+        self.mod = mod
         self.supported = supported if supported else lambda parent: True
 
     @property
@@ -20,6 +22,8 @@ class Processor(object):
         return self.name
 
     def process(self, content, debug=False, **kwargs):
+        if not self.mod:
+            self.mod = kwargs.get("mod", None)
         return content
 
     def __repr__(self):

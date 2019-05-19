@@ -47,7 +47,7 @@ class SubtitleModification(object):
                 continue
 
             old_content = new_content
-            new_content = processor.process(new_content, debug=debug, **kwargs)
+            new_content = processor.process(new_content, debug=debug, mod=self, **kwargs)
             if not new_content:
                 if debug:
                     logger.debug("Processor returned empty line: %s", processor.name)
@@ -107,9 +107,22 @@ empty_line_post_processors = [
 ]
 
 
-class EmptyEntryError(Exception):
+class ModEvent(Exception):
+    def __init__(self, *args, **kwargs):
+        self.mod = kwargs.pop("mod", None)
+        self.entry = kwargs.pop("entry", None)
+        super(ModEvent, self).__init__(*args, **kwargs)
+
+
+class EmptyEntryError(ModEvent):
     pass
 
 
-class EmptyLineError(Exception):
+class EmptyLineError(ModEvent):
     pass
+
+
+class FullContentRep(ModEvent):
+    def __init__(self, *args, **kwargs):
+        self.new_content = kwargs.pop("new_content", None)
+        super(FullContentRep, self).__init__(*args, **kwargs)

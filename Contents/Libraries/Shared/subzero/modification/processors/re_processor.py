@@ -14,12 +14,13 @@ class ReProcessor(Processor):
     pattern = None
     replace_with = None
 
-    def __init__(self, pattern, replace_with, name=None, supported=None):
-        super(ReProcessor, self).__init__(name=name, supported=supported)
+    def __init__(self, pattern, replace_with, name=None, supported=None, **kwargs):
+        super(ReProcessor, self).__init__(name=name, supported=supported, **kwargs)
         self.pattern = pattern
         self.replace_with = replace_with
 
     def process(self, content, debug=False, **kwargs):
+        super(ReProcessor, self).process(content, debug=debug, **kwargs)
         return self.pattern.sub(self.replace_with, content)
 
 

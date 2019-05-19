@@ -6,7 +6,7 @@ import pysubs2
 import logging
 import time
 
-from mods import EMPTY_TAG_PROCESSOR, EmptyEntryError
+from mods import EMPTY_TAG_PROCESSOR, EmptyEntryError, FullContentRep
 from registry import registry
 from subzero.language import Language
 
@@ -257,7 +257,16 @@ class SubtitleModifications(object):
                 mod.modify(None, debug=self.debug, parent=self, **args)
 
     def apply_line_mods(self, new_entries, mods):
-        for index, entry in enumerate(self.f, 1):
+        index = 1
+        entries = self.f[:]
+        entry_count = len(entries)
+
+        while 1:
+            if index > entry_count - 1:
+                break
+
+            entry = entries[index]
+
             applied_mods = []
             lines = []
 
@@ -265,116 +274,110 @@ class SubtitleModifications(object):
             start_tags = []
             end_tags = []
 
-            t = entry.text.strip()
-            if not t:
+            text = entry.text.replace(ur"\N", "\n").strip()
+            if not text:
                 if self.debug:
                     logger.debug(u"Skipping empty line: %s", index)
+                index += 1
                 continue
 
-            skip_entry = False
-            for line in t.split(ur"\N"):
-                # don't bother the mods with surrounding tags
-                old_line = line
-                line = line.strip()
-                skip_line = False
-                line_count += 1
+            try:
+                for line in text.split("\n"):
+                    # don't bother the mods with surrounding tags
+                    old_line = line
+                    line = line.strip()
+                    skip_line = False
+                    line_count += 1
 
-                if not line:
-                    continue
+                    if not line:
+                        continue
 
-                # clean {\X0} tags before processing
-                # fixme: handle nested tags?
-                start_tag = u""
-                end_tag = u""
-                if line.startswith(self.font_style_tag_start):
-                    start_tag = line[:5]
-                    line = line[5:]
-                if line[-5:-3] == self.font_style_tag_start:
-                    end_tag = line[-5:]
-                    line = line[:-5]
+                    # clean {\X0} tags before processing
+                    # fixme: handle nested tags?
+                    start_tag = u""
+                    end_tag = u""
+                    if line.startswith(self.font_style_tag_start):
+                        start_tag = line[:5]
+                        line = line[5:]
+                    if line[-5:-3] == self.font_style_tag_start:
+                        end_tag = line[-5:]
+                        line = line[:-5]
 
-                last_procs_mods = []
+                    last_procs_mods = []
 
-                # fixme: this double loop is ugly
-                for order, identifier, args in mods:
-                    mod = self.initialized_mods[identifier]
+                    # fixme: this double loop is ugly
+                    for order, identifier, args in mods:
+                        mod = self.initialized_mods[identifier]
 
-                    try:
-                        line = mod.modify(line.strip(), entry=entry.text, debug=self.debug, parent=self, index=index,
+                        line = mod.modify(line.strip(), entry=text, debug=self.debug, parent=self, index=index,
                                           **args)
-                    except EmptyEntryError:
-                        if self.debug:
-                            logger.debug(u"%d: %s: %r -> ''", index, identifier, entry.text)
-                        skip_entry = True
-                        break
 
-                    if not line:
-                        if self.debug:
-                            logger.debug(u"%d: %s: %r -> ''", index, identifier, old_line)
-                        skip_line = True
-                        break
+                        if not line:
+                            if self.debug:
+                                logger.debug(u"%d: %s: %r -> ''", index, identifier, old_line)
+                            skip_line = True
+                            break
 
-                    applied_mods.append(identifier)
-                    if mod.last_processors:
-                        last_procs_mods.append([identifier, args])
+                        applied_mods.append(identifier)
+                        if mod.last_processors:
+                            last_procs_mods.append([identifier, args])
 
-                if skip_entry:
-                    lines = []
-                    break
+                    if skip_line:
+                        continue
 
-                if skip_line:
-                    continue
+                    for identifier, args in last_procs_mods:
+                        mod = self.initialized_mods[identifier]
 
-                for identifier, args in last_procs_mods:
-                    mod = self.initialized_mods[identifier]
-
-                    try:
-                        line = mod.modify(line.strip(), entry=entry.text, debug=self.debug, parent=self, index=index,
+                        line = mod.modify(line.strip(), entry=text, debug=self.debug, parent=self, index=index,
                                           procs=["last_process"], **args)
-                    except EmptyEntryError:
+
+                        if not line:
+                            if self.debug:
+                                logger.debug(u"%d: %s: %r -> ''", index, identifier, old_line)
+                            skip_line = True
+                            break
+
+                    if skip_line:
+                        continue
+
+                    if start_tag:
+                        start_tags.append(start_tag)
+
+                    if end_tag:
+                        end_tags.append(end_tag)
+
+                    # append new line and clean possibly newly added empty tags
+                    cleaned_line = EMPTY_TAG_PROCESSOR.process(start_tag + line + end_tag, debug=self.debug).strip()
+                    if cleaned_line:
+                        # we may have a single closing tag, if so, try appending it to the previous line
+                        if len(cleaned_line) == 5 and cleaned_line.startswith("{\\") and cleaned_line.endswith("0}"):
+                            if lines:
+                                prev_line = lines.pop()
+                                lines.append(prev_line + cleaned_line)
+                                continue
+
+                        lines.append(cleaned_line)
+                    else:
                         if self.debug:
-                            logger.debug(u"%d: %s: %r -> ''", index, identifier, entry.text)
-                        skip_entry = True
-                        break
+                            logger.debug(u"%d: Ditching now empty line (%r)", index, line)
 
-                    if not line:
-                        if self.debug:
-                            logger.debug(u"%d: %s: %r -> ''", index, identifier, old_line)
-                        skip_line = True
-                        break
-
-                if skip_entry:
-                    lines = []
-                    break
-
-                if skip_line:
+                if not lines:
+                    # don't bother logging when the entry only had one line
+                    if self.debug and line_count > 1:
+                        logger.debug(u"%d: %r -> ''", index, text)
+                    index += 1
                     continue
+            except EmptyEntryError, e:
+                if self.debug:
+                    logger.debug(u"%d: %s: %r -> ''", index, e.mod.identifier, e.entry)
+                index += 1
+                continue
 
-                if start_tag:
-                    start_tags.append(start_tag)
-
-                if end_tag:
-                    end_tags.append(end_tag)
-
-                # append new line and clean possibly newly added empty tags
-                cleaned_line = EMPTY_TAG_PROCESSOR.process(start_tag + line + end_tag, debug=self.debug).strip()
-                if cleaned_line:
-                    # we may have a single closing tag, if so, try appending it to the previous line
-                    if len(cleaned_line) == 5 and cleaned_line.startswith("{\\") and cleaned_line.endswith("0}"):
-                        if lines:
-                            prev_line = lines.pop()
-                            lines.append(prev_line + cleaned_line)
-                            continue
-
-                    lines.append(cleaned_line)
-                else:
-                    if self.debug:
-                        logger.debug(u"%d: Ditching now empty line (%r)", index, line)
-
-            if not lines:
-                # don't bother logging when the entry only had one line
-                if self.debug and line_count > 1:
-                    logger.debug(u"%d: %r -> ''", index, entry.text)
+            except FullContentRep, e:
+                if self.debug:
+                    logger.debug(u"%d: %s: %r -> %r", index, e.mod.identifier, text, e.new_content)
+                new_entries.append(e.new_content.replace("\n", ur"\N"))
+                index += 1
                 continue
 
             new_text = ur"\N".join(lines)
@@ -403,6 +406,8 @@ class SubtitleModifications(object):
                 entry.text = new_text
 
             new_entries.append(entry)
+            index += 1
+
 
 SubMod = SubtitleModifications
 
