@@ -20,7 +20,7 @@ from exceptions import APIThrottled
 from dogpile.cache.api import NO_VALUE
 from subliminal.cache import region
 from subliminal_patch.pitcher import pitchers
-from cloudscraper import CloudScraper
+from cloudscraper import CloudScraper, User_Agent
 
 try:
     import brotli
@@ -89,7 +89,9 @@ class CFSession(CloudScraper):
 
         # Check if Cloudflare anti-bot is on
         try:
-            if self.isChallengeRequest(resp):
+            print repr(resp)
+            if self.is_IUAM_Challenge(resp):
+                print "TRYYYYYYYYYY"
                 if resp.request.method != 'GET':
                     # Work around if the initial request is not a GET,
                     # Supersede with a GET then re-request the original METHOD.
@@ -97,9 +99,10 @@ class CFSession(CloudScraper):
                     resp = ourSuper.request(method, url, *args, **kwargs)
                 else:
                     # Solve Challenge
-                    resp = self.sendChallengeResponse(resp, **kwargs)
+                    resp = self.Challenge_Response(resp, **kwargs)
 
         except ValueError, e:
+            print "YEEEEEEEEEEEEEE"
             if e.message == "Captcha":
                 parsed_url = urlparse(url)
                 domain = parsed_url.netloc
