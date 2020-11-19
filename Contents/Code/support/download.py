@@ -94,7 +94,7 @@ def post_download_hook(subtitle):
     if subtitle.is_pack and subtitle.pack_data:
         # store pack data in cache
         store_pack_data(subtitle, subtitle.pack_data)
-
+    # Activate autosync
     # may be redundant
     subtitle.pack_data = None
 
